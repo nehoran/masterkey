@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>בקרת מערכת // נהורן</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.1.1/crypto-js.min.js"></script>
+<style>
+    :root { 
+        --accent: #ffb000; 
+        --glow: 0 0 5px rgba(255, 176, 0, 0.5), 0 0 10px rgba(255, 176, 0, 0.2); 
+        --dim: rgba(255, 176, 0, 0.2);
+        --bg: #000;
+        --fail: #ff3333; 
+        --success: #00ff41; 
+    }
+    * { box-sizing: border-box; user-select: none; }
+    body { background: var(--bg); color: var(--accent); font-family: 'IBM Plex Mono', monospace; margin: 0; display: flex; flex-direction: column; align-items: center; min-height: 100vh; padding: 20px; overflow-x: hidden; text-shadow: var(--glow); direction: rtl; text-align: right; }
+    
+    .scanlines { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.2)); background-size: 100% 4px; pointer-events: none; z-index: 100; opacity: 0.6; }
+    .vignette { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: radial-gradient(circle, rgba(0,0,0,0) 60%, rgba(0,0,0,0.95) 100%); pointer-events: none; z-index: 101; }
+    .flicker { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255, 176, 0, 0.02); pointer-events: none; z-index: 102; animation: flicker 0.15s infinite; }
+    @keyframes flicker { 0% { opacity: 0.02; } 50% { opacity: 0.05; } 100% { opacity: 0.02; } }
+
+    h1 { margin: 0 0 40px 0; font-size: 2rem; border-bottom: 2px solid var(--accent); padding-bottom: 15px; width: 100%; max-width: 900px; text-align: center; letter-spacing: 4px; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; width: 100%; max-width: 900px; position: relative; z-index: 10; }
+    .module { border: 1px solid var(--dim); padding: 30px; position: relative; background: rgba(255, 176, 0, 0.02); transition: 0.3s; display: flex; align-items: center; justify-content: center; }
+    .module:hover { border-color: var(--accent); box-shadow: inset 0 0 20px rgba(255,176,0,0.1); }
+    
+    .module::before { content: ''; position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-top: 2px solid var(--accent); border-right: 2px solid var(--accent); }
+    .module::after { content: ''; position: absolute; bottom: -1px; left: -1px; width: 8px; height: 8px; border-bottom: 2px solid var(--accent); border-left: 2px solid var(--accent); }
+
+    /* M1 */
+    .c-row { display: flex; gap: 10px; }
+    .c-slot { width: 30px; height: 30px; border: 1px solid var(--dim); cursor: pointer; transition: 0.2s; }
+    .st-0 { border-color: var(--dim); opacity: 0.3; }
+    .st-1 { background: #ff3333; box-shadow: 0 0 10px #ff3333; border-color: #ff3333; opacity: 1; }
+    .st-2 { background: #eee; box-shadow: 0 0 10px #fff; border-color: #fff; opacity: 1; }
+    .st-3 { background: #2980b9; box-shadow: 0 0 10px #2980b9; border-color: #2980b9; opacity: 1; }
+
+    /* M2 */
+    .sef-container { position: relative; width: 220px; height: 380px; }
+    .sef-lines { position: absolute; top:0; left:0; width:100%; height:100%; z-index: 0; opacity: 0.4; }
+    .sef-lines line { stroke: var(--accent); stroke-width: 1; }
+    .sef-node { position: absolute; width: 30px; height: 30px; border-radius: 50%; border: 1px solid var(--dim); color: var(--dim); display: flex; align-items: center; justify-content: center; font-size: 12px; cursor: pointer; z-index: 10; transition: 0.3s; transform: translate(-50%, -50%); background: #000; }
+    .sef-node:hover { border-color: var(--accent); color: var(--accent); }
+    .sef-node.on { background: var(--accent); color: #000; box-shadow: 0 0 15px var(--accent); font-weight: bold; border-color: var(--accent); }
+
+    /* M3 */
+    .sl-row { display: flex; gap: 30px; justify-content: center; height: 180px; width: 100%; padding:10px; }
+    .sl-col { display: flex; flex-direction: column; align-items: center; height: 100%; width: 50px; position: relative; }
+    
+    .ruler-bg { position: absolute; top: 30px; left: 0; width: 100%; height: calc(100% - 30px); pointer-events: none; background: repeating-linear-gradient(to bottom, rgba(255,176,0,0.2) 0px, rgba(255,176,0,0.2) 1px, transparent 1px, transparent 10px); opacity: 0.3; }
+
+    input[type=range] { -webkit-appearance: none; appearance: none; width: 6px; height: 100%; background: transparent; cursor: ns-resize; margin: 0; z-index: 5; outline:none; }
+    input[type=range]::-webkit-slider-runnable-track { background: #000; border: 1px solid var(--dim); width: 6px; border-radius: 4px; height: 100%; }
+    input[type=range]::-webkit-slider-thumb { 
+        -webkit-appearance: none; appearance: none;
+        width: 20px; height: 20px; 
+        background: #000;
+        border: 4px solid var(--accent); border-radius: 50%;
+        box-shadow: 0 0 10px var(--accent);
+        margin-left: -7px; margin-top: 0px; cursor: ns-resize; 
+    }
+    .sl-val { color: var(--accent); font-size: 1.1rem; margin-bottom: 5px; font-weight: bold; font-family: monospace; z-index: 2; }
+
+    /* M4 */
+    .dg-row { display: flex; gap: 15px; justify-content: center; align-items: center; font-size: 2rem; color: var(--dim); height: 100%; }
+    .dg-col { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+    .dg-btn { background: transparent; border: none; color: var(--dim); cursor: pointer; font-size: 12px; transition: 0.2s; }
+    .dg-btn:hover { color: var(--accent); text-shadow: 0 0 5px var(--accent); }
+    .dg-val { font-size: 2rem; color: var(--accent); border: 1px solid var(--dim); width: 40px; text-align: center; padding: 5px 0; background: rgba(255,176,0,0.05); }
+
+    /* M5 */
+    .pass-inp { width: 100%; background: transparent; border: 1px solid var(--dim); color: var(--accent); font-family: inherit; font-size: 2rem; text-align: center; text-transform: uppercase; letter-spacing: 5px; padding: 15px; outline: none; transition: 0.3s; direction: ltr; }
+    .pass-inp:focus { border-color: var(--accent); background: rgba(255,176,0,0.05); }
+    .pass-inp::placeholder { color: var(--dim); opacity: 0.5; text-shadow: none; }
+
+    /* MAIN BTN */
+    .unlock { width: 100%; max-width: 900px; padding: 25px; background: transparent; border: 2px solid var(--accent); color: var(--accent); font-family: inherit; font-size: 1.5rem; font-weight: bold; letter-spacing: 3px; margin-top: 30px; cursor: pointer; transition: 0.3s; position: relative; z-index: 10; text-transform: uppercase; }
+    .unlock:hover { background: var(--accent); color: #000; box-shadow: 0 0 30px var(--accent); }
+    
+    .shake { animation: shake 0.4s ease-in-out; border-color: var(--fail); color: var(--fail); box-shadow: 0 0 10px var(--fail); text-shadow: 0 0 5px var(--fail); }
+    @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-10px); } 75% { transform: translateX(10px); } }
+
+    /* SUCCESS */
+    #success { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 200; align-items: center; justify-content: center; flex-direction: column; }
+    .s-box { border: 2px solid var(--success); padding: 50px; text-align: center; color: var(--success); box-shadow: 0 0 50px rgba(0,255,65,0.2); max-width: 90%; text-shadow: 0 0 10px var(--success); }
+    .s-head { font-size: 2rem; font-weight: bold; margin-bottom: 20px; border-bottom: 1px solid var(--success); padding-bottom: 10px; }
+    .s-body { font-size: 1.2rem; }
+
+    @media (max-width: 700px) { .grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+    <div class="scanlines"></div><div class="flicker"></div><div class="vignette"></div>
+    <h1>בקרת מערכת</h1>
+    <div class="grid">
+        <div class="module"><div class="c-row" id="m1"></div></div>
+        <div class="module">
+            <div class="sef-container" id="m2">
+                <svg class="sef-lines">
+                    <line x1="85%" y1="20%" x2="85%" y2="70%" /><line x1="15%" y1="20%" x2="15%" y2="70%" /><line x1="50%" y1="8%" x2="50%" y2="92%" />
+                    <line x1="50%" y1="8%" x2="85%" y2="20%" /><line x1="50%" y1="8%" x2="15%" y2="20%" /><line x1="15%" y1="20%" x2="85%" y2="20%" />
+                    <line x1="15%" y1="20%" x2="50%" y2="55%" /><line x1="85%" y1="20%" x2="50%" y2="55%" /><line x1="15%" y1="40%" x2="50%" y2="55%" />
+                    <line x1="85%" y1="40%" x2="50%" y2="55%" /><line x1="15%" y1="70%" x2="50%" y2="55%" /><line x1="85%" y1="70%" x2="50%" y2="55%" />
+                    <line x1="15%" y1="40%" x2="85%" y2="40%" /><line x1="15%" y1="70%" x2="85%" y2="70%" /><line x1="15%" y1="70%" x2="50%" y2="80%" />
+                    <line x1="85%" y1="70%" x2="50%" y2="80%" />
+                </svg>
+            </div>
+        </div>
+        <div class="module">
+            <div class="sl-row" id="m3">
+                <div class="sl-col"><div class="ruler-bg"></div><div id="v_s0" class="sl-val">50</div><input type="range" id="s0" min="0" max="100" value="50" oninput="upS(0)"></div>
+                <div class="sl-col"><div class="ruler-bg"></div><div id="v_s1" class="sl-val">50</div><input type="range" id="s1" min="0" max="100" value="50" oninput="upS(1)"></div>
+                <div class="sl-col"><div class="ruler-bg"></div><div id="v_s2" class="sl-val">50</div><input type="range" id="s2" min="0" max="100" value="50" oninput="upS(2)"></div>
+            </div>
+        </div>
+        <div class="module"><div class="dg-row" id="m4"></div></div>
+        <div class="module" style="grid-column: 1 / -1;"><input type="text" id="m5" class="pass-inp" placeholder="PASSWORD"></div>
+    </div>
+    <button id="btn" class="unlock" onclick="check()">כניסה</button>
+    <div id="success"><div class="s-box"><div class="s-head">גישה אושרה</div><div id="s-data" class="s-body"></div></div></div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+    const FB = {"apiKey":"AIzaSyDHY2cf4SG3Y1_kL41DiZOgI6bmuTj0qWw","authDomain":"nehoranterminal.firebaseapp.com","projectId":"nehoranterminal","storageBucket":"nehoranterminal.firebasestorage.app","messagingSenderId":"264117742974","appId":"1:264117742974:web:b2ec0462046477ccbd972f"};
+    const app = initializeApp(FB);
+    const db = getFirestore(app);
+
+    let st = { m1:[0,0,0,0,0,0,0], m2:[0,0,0,0,0,0,0,0,0,0], m4:[0,0,0,0] };
+    const sefPos = [{l:50,t:8},{l:85,t:20},{l:15,t:20},{l:85,t:40},{l:15,t:40},{l:50,t:55},{l:85,t:70},{l:15,t:70},{l:50,t:80},{l:50,t:92}];
+
+    window.init = function() {
+        const m1 = document.getElementById('m1');
+        for(let i=0; i<7; i++) {
+            let d = document.createElement('div'); d.className='c-slot st-0';
+            d.onclick = () => { st.m1[i]=(st.m1[i]+1)%4; d.className='c-slot st-'+st.m1[i]; };
+            m1.appendChild(d);
+        }
+        const m2 = document.getElementById('m2');
+        for(let i=0; i<10; i++) {
+            let d = document.createElement('div'); d.className='sef-node';
+            d.style.left = sefPos[i].l+'%'; d.style.top = sefPos[i].t+'%';
+            d.onclick = () => { st.m2[i]=st.m2[i]?0:1; d.classList.toggle('on'); };
+            m2.appendChild(d);
+        }
+        const m4 = document.getElementById('m4');
+        for(let i=0; i<4; i++) {
+            if(i===2) { let s=document.createElement('span'); s.innerText=':'; m4.appendChild(s); }
+            let c = document.createElement('div'); c.className='dg-col';
+            let u = document.createElement('button'); u.className='dg-btn'; u.innerText='▲'; u.onclick=()=>tD(i,1);
+            let v = document.createElement('div'); v.className='dg-val'; v.id='d'+i; v.innerText='0';
+            let d = document.createElement('button'); d.className='dg-btn'; d.innerText='▼'; d.onclick=()=>tD(i,-1);
+            c.append(u,v,d); m4.appendChild(c);
+        }
+    };
+    window.upS = function(i) { document.getElementById('v_s'+i).innerText = document.getElementById('s'+i).value; };
+    window.tD = function(i, d) {
+        st.m4[i] += d; if(st.m4[i]>9) st.m4[i]=0; if(st.m4[i]<0) st.m4[i]=9;
+        document.getElementById('d'+i).innerText = st.m4[i];
+    };
+    
+    window.check = async function() {
+        const btn = document.getElementById('btn');
+        btn.innerText = "מאמת נתונים...";
+        
+        let p1 = st.m1.join('');
+        let p2 = st.m2.join('');
+        let p3 = document.getElementById('s0').value + '-' + document.getElementById('s1').value + '-' + document.getElementById('s2').value;
+        let p4 = st.m4.join('');
+        let p5 = document.getElementById('m5').value.toUpperCase().trim();
+        let raw = p1+'|'+p2+'|'+p3+'|'+p4+'|'+p5;
+        let hash = CryptoJS.SHA256(raw).toString();
+
+        try {
+            setDoc(doc(db, "panel_logs", "log_"+Date.now()), { hash: hash, timestamp: serverTimestamp() }).catch(e=>{});
+            const snap = await getDoc(doc(db, "panel_locks", hash));
+            if (snap.exists()) {
+                const data = snap.data();
+                const payload = data.payload;
+                if (payload.startsWith("http")) { window.location.href = payload; } 
+                else { document.getElementById('s-data').innerText = payload; document.getElementById('success').style.display = 'flex'; }
+            } else { throw new Error("Invalid"); }
+        } catch (e) {
+            btn.classList.add('shake'); btn.innerText="גישה נדחתה";
+            setTimeout(()=>{ btn.classList.remove('shake'); btn.innerText="כניסה"; }, 800);
+        }
+    };
+    
+    init();
+</script>
+</body>
+</html>
+    
